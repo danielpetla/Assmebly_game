@@ -5,14 +5,17 @@ MAP_H: .word 8	# Map hight
 
 # 10 = new line, @ = reward, P = player, # = walls
 map:
-    .byte '#','#','#','#','#','#','#','#','#','#','#','#',10
-    .byte '#',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','#',10
-    .byte '#',' ',' ',' ',' ','P',' ',' ',' ',' ',' ','#',10
-    .byte '#',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','#',10
-    .byte '#',' ',' ',' ',' ',' ',' ',' ',' ',' ','@','#',10
-    .byte '#',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','#',10
-    .byte '#',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','#',10
-    .byte '#','#','#','#','#','#','#','#','#','#','#','#',10,0
+	.byte '#','#','#','#','#','#','#','#','#','#','#','#',10
+	.byte '#',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','#',10
+	.byte '#',' ',' ',' ',' ','P',' ',' ',' ',' ',' ','#',10
+	.byte '#',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','#',10
+	.byte '#',' ',' ',' ',' ',' ',' ',' ',' ',' ','@','#',10
+	.byte '#',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','#',10
+	.byte '#',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','#',10
+	.byte '#','#','#','#','#','#','#','#','#','#','#','#',10,0
+    
+score: 		.asciiz "Score: 0\n"
+game_over: 	.asciiz "Game Over 0\n"
     
 x_player: .word 5	# inital row location of the player
 y_player: .word 2	# initial column location of the player
@@ -24,20 +27,51 @@ y_player: .word 2	# initial column location of the player
 
 main:
 	li $sp,0x7fffeffc	# Address of the stock pointer top of the memmory
-	jal print_score		# Got to print score
 	
-	jal print_map		# Go to the printi map
+	li $t7, 0		# points = 0
 	
+	jal print_score		# Go to print score
+	
+	# Move map 2 lines down
+	li $t0,0
+	li $t1,2
+
+print_blank:
+	li $a0,10            # newline
+	jal print
+	addi $t0,$t0,1
+	blt $t0,$t1,print_blank
+    
+	jal print_map         # Go print map
 loop:
     j loop			# Infinite loop -> keeps the program running
+    
 
-# Printing score -------------------
-print_score:
-	li $t0, 0 		# Counter
-	li $t1, 2		# Number of lines
+# Printing -------------------------
+print:
+	addi $sp, $sp, -8	# Allocate 8 bytes on stack
+	sw   $ra, 4($sp)	# Save return address
+	sw   $s0, 0($sp)	# Save $s0 (we’ll use it as pointer)
+
+	move $s0, $a0		# $s0 = pointer to string
+
+print_loop:
+	lbu  $t0, 0($s0)		# Load byte from string
+	beqz $t0, print_end		# Stop at null terminator
+    
+MMIO:
+	li   $t1, 0xffff000c	# MMIO Transmitter Data Register
+	sw   $t0, 0($t1)	# Write character
+
+	addi $s0, $s0, 1	# Move pointer to next char
+	j print_loop		# Repeat for next character
+
+print_end:
+	lw   $s0, 0($sp)	# Restore $s0
+	lw   $ra, 4($sp)	# Restore return address
+	addi $sp, $sp, 8	# Restore stack
+	jr   $ra		# Return
 	
-	li $a0, 'S'
-	jal print_char
 	
 # Printing map ---------------------
 
@@ -62,7 +96,7 @@ char_loop:
 	add $t2,$t2,$t1		# Adds offset to the column (t2 points to the current char)
 	add $t2,$s0,$t2 	# Final memmory address of the char
 	lbu $t3,0($t2)		# The actual ASCII char
-	beqz $t3,end_map	# if byte = 0 -> end function
+	beqz $t3,end_print	# if byte = 0 -> end function
 
 
 # Wating for input -----------------
@@ -79,9 +113,9 @@ wait_ready:
 	blt $t1,$s1,char_loop	# Loop until column < width
 
 	addi $t0,$t0,1		# Move to the next row
-	blt $t0,8,line_loop	# oop until row < 8 (nuber of rows)
+	blt $t0,8,line_loop	# Loop until row < 8 (nuber of rows)
 
-end_map:
+end_print:
 	lw $s2,0($sp)		# Restores the temp variables 
 	lw $s1,4($sp)		# Restore map width
 	lw $s0,8($sp)		# Restore the base address of the map
@@ -89,6 +123,16 @@ end_map:
 	addi $sp,$sp,16		# Deallocate stack space
 	jr $ra			# Return to caller
 	
-# Printing char --------------------
-print_char:
+# Printing score and game --------------------
+print_score:
+	addi $sp, $sp, -8	# Allocating memmory	
+	sw $ra,4($sp)		# Saving return address
+
+	la $a0,score		# $a0 = address of score string
+	jal print		# Call your general print function
+
+	lw $ra,4($sp)		# Restoring return address
+	addi $sp,$sp,8		# Restor allocated memory
+	jr $ra			# Jump back to main
+	
 	

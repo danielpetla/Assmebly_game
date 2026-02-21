@@ -1,7 +1,7 @@
 .data
 
-MAP_W: .word 12	# Map width
-MAP_H: .word 8	# Map height
+Map_W: .word 12	# Map width
+Map_H: .word 8	# Map height
 
 # @ = reward, P = player, # = walls
 map:
@@ -14,6 +14,11 @@ int_buffer:	.space 12   # enough for 32-bit number + null
     
 x_player: .word 5	# initial row location of the player
 y_player: .word 2	# initial column location of the player
+
+new_row: .word 0	# initializing players new row
+new_col: .word 0	# initializing players new column
+
+key_buffer: .word 0	# initializing the variable
 
 .text
 
@@ -43,7 +48,7 @@ loop:
 	j loop	# -> keeps the program running
 
 # -------------------------
-# Printing Function (polling)
+# Printing Function
 # $a0 = pointer to null-terminated string
 print:
 	addi $sp, $sp, -8
@@ -113,7 +118,7 @@ int_to_string:
 
 	la $t0,int_buffer
 	addi $t0,$t0,11
-	sb $zero,0($t0)  # null terminator
+	sb $zero,0($t0)		# null terminator
 
 	move $t1,$a0
 	li $t2,10
@@ -121,8 +126,8 @@ int_to_string:
 
 convert_loop:
 	div $t1,$t2
-	mfhi $t3       # remainder
-	mflo $t1       # quotient
+	mfhi $t3	# remainder
+	mflo $t1	# quotient
 
 	addi $t3,$t3,'0'
 	addi $t0,$t0,-1
@@ -148,4 +153,72 @@ done:
 update_score:
 	addi $t7, $t7, 5	# adding points
 	jal print_score
+
+# -------------------------
+# Keyboard interrupt 
+kb_interrupt:
+	addi $sp, $sp, -8
+	sw $ra, 4($sp)
+	sw $s0, 0($sp)
+
+	li $s0, 0xffff0004	# Keyboard Data Register
+	lb $t0, 0($s0)		# Read ASCII key pressed
+
+    # Store key in input buffer
+	la $s0, key_buffer
+	sw $t0, 0($s0)
+
+	lw $s0, 0($sp)
+	lw $ra, 4($sp)
+	addi $sp, $sp, 8
+	eret
+    
+# -------------------------
+# Using player's input
+movement:
+	beq $t0, 119, up	# input 'w'
+	beq $t0, 115, down	# input 's'
+	beq $t0, 100, left	# input 'd'
+	beq $t0, 97. right	# input 'a'
+
+up:
+
+down:
+
+left:
+
+right:
+
+
+# -------------------------
+# Updating the player
+# player offset = row * width + column
+
+	la $s0, map
+	lw $t0, x_player
+	lw $t1, y_player
+	lw $t3, Map_W
 	
+	mul $t2,$t0, $t3	# row offset
+	add $t2, $t2, $t1
+	add $s0, $s0, $t2
+	li $t3, ' '		# clear old player
+	sb $t3, 0($s0)
+	
+	# Updating players position
+	lw $t0, new_row
+	lw $t1, new_col
+	sw $t0, x_player
+	sw $t1, y_player
+	
+	# Putting P into a new location
+	la $s0, map
+	lw $t0, x_player	# x_player = new_row
+	lw $t1, y_player	# y_player = new_col
+	mul $t2, $t0, $t3
+	add $t2, $t2, $t1
+	add $s0, $s0, $t2
+	li $t3, 'P'
+	sb $t3, 0($s0)
+	
+	jal print_map

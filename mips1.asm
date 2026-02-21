@@ -1,204 +1,144 @@
-############################################################
-# ROGUELIKE ENGINE BASE – TILEMAP PROFISSIONAL
-############################################################
-
 .data
 
-MAP_W: .word 12
-MAP_H: .word 8
+MAP_W: .word 12	# Map width
+MAP_H: .word 8	# Map height
 
-# MAPA LÓGICO (sem ASCII)
+# @ = reward, P = player, # = walls
 map:
-.byte 1,1,1,1,1,1,1,1,1,1,1,1
-.byte 1,0,0,0,0,0,0,0,0,0,0,1
-.byte 1,0,0,0,0,0,0,0,0,0,0,1
-.byte 1,0,0,0,0,0,0,0,0,0,2,1
-.byte 1,0,0,0,0,0,0,0,0,0,0,1
-.byte 1,0,0,0,0,0,0,0,0,0,0,1
-.byte 1,0,0,0,0,0,0,0,0,0,0,1
-.byte 1,1,1,1,1,1,1,1,1,1,1,1
+	.asciiz "############\n#          #\n#    P     #\n#          #\n#         @#\n#          #\n#          #\n############\n"
+    
+score: 		.asciiz "Score: "
+game_over: 	.asciiz "Game Over\n"
+new_line:	.asciiz "\n"
+int_buffer:	.space 12   # enough for 32-bit number + null
+    
+x_player: .word 5	# initial row location of the player
+y_player: .word 2	# initial column location of the player
 
-player_x: .word 5
-player_y: .word 2
-
-msg_block: .asciiz "Bateu na parede!\n"
-
-############################################################
 .text
-############################################################
 
-.globl main
+# -------------------------
+# Main
 main:
-    li $sp,0x7fffeffc
+	li $sp,0x7fffeffc	# Initialize stack
+	li $t7, 0		# points = 0
 
-    jal render_map
+	# Print score
+	jal print_score
+	
+	# Move map 2 lines down
+	li $t0,0
+	li $t1,2
+print_blank:
+	la $a0, new_line
+	jal print
+	addi $t0,$t0,1
+	blt $t0,$t1,print_blank
+    
+	# Print map
+	jal print_map
 
-    li $a0,2      # move leste
-    jal move_player
+	# Infinite loop
+loop:
+	j loop
 
-    li $a0,2
-    jal move_player
+# -------------------------
+# Printing Function (polling)
+# $a0 = pointer to null-terminated string
+print:
+	addi $sp, $sp, -8
+	sw $ra,4($sp)
+	sw $s0,0($sp)
 
-    li $a0,1
-    jal move_player
+	move $s0,$a0
 
-loop: j loop
+print_loop:
+	lbu $t0,0($s0)       # load byte
+	beqz $t0, print_end   # stop at null terminator
 
-
-############################################################
-# MMIO PRINT CHAR
-############################################################
-print_char:
+	# Polling MMIO transmitter
+	li $t1,0xffff0008
 wait_ready:
-    li $t0,0xffff0008
-    lw $t1,0($t0)
-    andi $t1,$t1,1
-    beqz $t1,wait_ready
+	lw $t2,0($t1)
+	andi $t2,$t2,1
+	beqz $t2, wait_ready
 
-    li $t0,0xffff000c
-    sw $a0,0($t0)
-    jr $ra
+	# Send char
+	li $t1,0xffff000c
+	sb $t0,0($t1)
 
+	addi $s0,$s0,1
+	j print_loop
 
-############################################################
-# GET TILE (a0=x, a1=y) -> v0=tile
-############################################################
-get_tile:
-    la $t0,MAP_W
-    lw $t0,0($t0)
+print_end:
+	lw $s0,0($sp)
+	lw $ra,4($sp)
+	addi $sp,$sp,8
+	jr $ra
 
-    mul $t1,$a1,$t0
-    add $t1,$t1,$a0
+# -------------------------
+# Print map
+print_map:
+	la $a0,map
+	jal print
+	jr $ra
 
-    la $t2,map
-    add $t2,$t2,$t1
-    lbu $v0,0($t2)
+# -------------------------
+# Print score
+print_score:
+	addi $sp,$sp,-4
+	sw $ra,0($sp)
 
-    jr $ra
+	# Print "Score: "
+	la $a0,score
+	jal print
 
+	# Convert integer score to string
+	move $a0,$t7
+	jal int_to_string
+	move $a0,$v0
+	jal print
 
-############################################################
-# RENDER TILE -> ASCII
-# a0 = tile, v0 = char
-############################################################
-tile_to_char:
-    beq $a0,0,floor
-    beq $a0,1,wall
-    beq $a0,2,door
+	lw $ra,0($sp)
+	addi $sp,$sp,4
+	jr $ra
 
-floor: li $v0,' '
-       jr $ra
-wall:  li $v0,'#'
-       jr $ra
-door:  li $v0,'D'
-       jr $ra
+# -------------------------
+# Convert integer to ASCII string
+# Input: $a0 = integer
+# Output: $v0 = pointer to string
+int_to_string:
+	addi $sp,$sp,-8
+	sw $ra,4($sp)
 
+	la $t0,int_buffer
+	addi $t0,$t0,11
+	sb $zero,0($t0)  # null terminator
 
-############################################################
-# RENDER MAP COMPLETO
-############################################################
-render_map:
-    addi $sp,$sp,-8
-    sw $ra,4($sp)
-    sw $s0,0($sp)
+	move $t1,$a0
+	li $t2,10
+	beqz $t1,zero_case
 
-    la $s0,MAP_W
-    lw $s0,0($s0)
+convert_loop:
+	div $t1,$t2
+	mfhi $t3       # remainder
+	mflo $t1       # quotient
 
-    li $t1,0  # y
+	addi $t3,$t3,'0'
+	addi $t0,$t0,-1
+	sb $t3,0($t0)
 
-row_loop:
-    li $t0,0  # x
+	bnez $t1,convert_loop
+	j done
 
-col_loop:
-
-    # checa jogador primeiro
-    la $t2,player_x
-    lw $t2,0($t2)
-    la $t3,player_y
-    lw $t3,0($t3)
-
-    bne $t0,$t2,draw_tile
-    bne $t1,$t3,draw_tile
-
-    li $a0,'@'
-    jal print_char
-    j next_col
-
-draw_tile:
-    move $a0,$t0
-    move $a1,$t1
-    jal get_tile
-
-    move $a0,$v0
-    jal tile_to_char
-
-    move $a0,$v0
-    jal print_char
-
-next_col:
-    addi $t0,$t0,1
-    blt $t0,$s0,col_loop
-
-    li $a0,10
-    jal print_char
-
-    addi $t1,$t1,1
-    blt $t1,8,row_loop
-
-    lw $s0,0($sp)
-    lw $ra,4($sp)
-    addi $sp,$sp,8
-    jr $ra
-
-
-############################################################
-# MOVE PLAYER
-# a0 = dir (0=N,1=S,2=L,3=O)
-############################################################
-move_player:
-    addi $sp,$sp,-4
-    sw $ra,0($sp)
-
-    la $t0,player_x
-    lw $t0,0($t0)
-    la $t1,player_y
-    lw $t1,0($t1)
-
-    beq $a0,0,north
-    beq $a0,1,south
-    beq $a0,2,east
-    beq $a0,3,west
-    j done
-
-north: addi $t1,$t1,-1  
-	j test
-south: addi $t1,$t1,1  
-	 j test
-east:  addi $t0,$t0,1  
-	 j test
-west:  addi $t0,$t0,-1
-
-test:
-    move $a0,$t0
-    move $a1,$t1
-    jal get_tile
-
-    beq $v0,1,blocked
-
-    la $t2,player_x
-    sw $t0,0($t2)
-    la $t2,player_y
-    sw $t1,0($t2)
-
-    jal render_map
-    j done
-
-blocked:
-    la $a0,msg_block
-    # aqui poderia usar print string se quiser
+zero_case:
+	addi $t0,$t0,-1
+	li $t3,'0'
+	sb $t3,0($t0)
 
 done:
-    lw $ra,0($sp)
-    addi $sp,$sp,4
-    jr $ra
+	move $v0,$t0
+
+	lw $ra,4($sp)
+	addi $sp,$sp,8
+	jr $ra

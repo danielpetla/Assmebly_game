@@ -93,9 +93,6 @@ print_score:
 
 	la $a0,score		# $a0 = address of score string
 	jal print		# Call your general print function
-	
-	la $a0, ($t7)
-	jal print
 
 	lw $ra,0($sp)		# Restoring return address
 	addi $sp,$sp,4		# Restor allocated memory

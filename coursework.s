@@ -26,9 +26,10 @@ debug_char: .byte 0,0
 # -------------------------
 # Main
 main:
-	# Enables keyboard interrupt bit
-	li $t0, 0x00000002
-	sw $t0, 0xffff0000
+	# Enable keyboard interrupt level + global interrupt
+	mfc0 $t0, $12
+	ori  $t0, $t0, 0x00000101   # IE=1 and IM0=1 (enable hardware interrupt line)
+	mtc0 $t0, $12
 	
 	# Enables global interrupts
 	mfc0 $t0, $12
@@ -178,14 +179,22 @@ update_score:
 # Keyboard interrupt
 .ktext 0x80000180		# places the following code in kernel text memory
  
-kb_interrupt:
+__kernel_entry_point:
 	li $k0, 0xffff0004	# Keyboard Data Register
 	lb $k1, 0($k0)		# read ASCII key pressed
 	
 
-    # Store key in input buffer
+	# Store key in input buffer
 	la $k0, key_buffer
 	sb $k1, 0($k0)
+	
+	# DEBUG echo (optional)
+    	li $k0, 0xffff000c
+    	sb $k1, 0($k0)
+	
+	# clear interrupt by reading control register
+    	li $k0, 0xffff0000
+    	lw $k1, 0($k0)		# read receiver control to clear interrupt
 	
 	eret
     

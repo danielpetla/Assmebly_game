@@ -1,7 +1,7 @@
 .data
 
-Map_W: .word 12	# Map width (including null terminator)
-Map_H: .word 8	# Map height
+# columns =  13 (12 + null terminator)
+# rows =  8	
 
 # @ = reward, P = player, # = walls
 map:
@@ -17,7 +17,9 @@ y_player: .word 6	# initial column location of the player
 new_row: .word 0	# initializing players new row
 new_col: .word 0	# initializing players new column
 
-key_buffer: .word 0	# initializing the variable
+key_buffer: .space 1	# initializing the variable
+
+debug_char: .byte 0,0
 
 .text
 
@@ -40,13 +42,13 @@ main:
 	jal print_score
 	
 	# Move map 2 lines down
-	li $t0,0
-	li $t1,2
+	li $s5,0
+	li $s6,2
 print_blank:
 	la $a0, new_line
 	jal print
-	addi $t0,$t0,1
-	blt $t0,$t1,print_blank
+	addi $s5,$s5,1
+	blt $s5,$s6,print_blank
     
 	# Print map
 	jal print_map
@@ -196,6 +198,18 @@ movement:
 	lb $t0, 0($t9)
 	beqz $t0, end_move
 	
+	# --- DEBUG ECHO (temporary) ---
+    	addi $sp,$sp,-4
+    	sw $ra,0($sp)
+
+    	la $a0, debug_char
+    	sb $t0, debug_char
+    	jal print
+
+    	lw $ra,0($sp)
+    	addi $sp,$sp,4
+    	# -------------------------------
+	
 	beq $t0, 119, up	# input 'w'
 	beq $t0, 115, down	# input 's'
 	beq $t0, 97, left	# input 'a'
@@ -249,40 +263,34 @@ end_move:
 
 update_player:
 
-	addi $sp, $sp, -8
-	sw $s0, 4($sp)
-	sw $s1, 0($sp)
+	addi $sp, $sp, -24
+	sw $ra, 20($sp)
+	sw $s0, 16($sp)
+	sw $s1, 12($sp)
+	sw $s2, 8($sp)
+	sw $s3, 4($sp)
+	sw $s4, 0($sp)
 	
-	la $s1, map		# $s1 = new map
-	lw $t0, new_row
-	lw $t1, new_col
-	lw $t4, Map_W
+	la $s0, map		# $s0 = old map
+	lw $s2, new_row		# t1
+	lw $s3, new_col		# t0
+	li $s4, 13		# t4
 
 	# New offset
-	mul $t2, $t0, $t4 	# row * Map_W
-	add $t2, $t2, $t0 	# + row (for \n)
-	add $t2, $t2, $t1 	# + col
-	add $s1, $s1, $t2 	# new address
+	mul $t2, $s2, $s4 	# row * Map_W
+	add $t2, $t2, $s3 	# + col
+	add $s1, $s0, $t2 	# new address -> new map
+	
 	lbu $t5, 0($s1)		# load new position
 	
 	# Collision check
 	li $t3, '#'
-	beq $t5, $t3, no_move
+	beq $t5, $t3, exit_update
 	
 	# Reward check
 	li $t3, '@'
 	bne $t5, $t3, clear_old
 	jal update_score	# add points
-	
-	# Reload registers needed for calculations after the update-socre function
-	lw $t4, Map_W
-	la $s0, map		# $s0 = the old map
-	lw $t0, new_row
-	lw $t1, new_col
-	mul $t2, $t0, $t4
-	add $t2, $t2, $t0
-	add $t2, $t2, $t1
-	add $s0, $s0, $t2    # Re-calculate target address
 	
 # Clear old position
 clear_old:
@@ -290,33 +298,35 @@ clear_old:
 	lw $t7, y_player
 	la $s0, map
 	
-	mul $t2, $t6, $t4 	# row * Map_W
-	add $t2, $t2, $t6 	# + row (for \n)
-	add $t2, $t2, $t7 	# + col
+	mul $t2, $t6, $s4 	# row_old * Map_W
+	add $t2, $t2, $t7 	# + col_old
+	la $s0, map
 	add $s0, $s0, $t2
 	li $t3, ' ' 		# clear old 'P'
 	sb $t3, 0($s0)
 	
 	# Update players position
-	sw $t0, x_player
-	sw $t1, y_player
+	sw $s2, x_player
+	sw $s3, y_player
     
-    # Putting P into the new location	
+	# Putting P into the new location	
 	li $t3, 'P'
 	sb $t3, 0($s1)
-    
-	# Clear key buffer
-	la $t9, key_buffer
-	sb $zero, 0($t9)
-	jal print_map
-	lw $s0, 0($sp)		# restore $s0
-	addi $sp, $sp, 4
-	jr $ra
 	
-no_move:
+	# Reprint
+	jal print_map
+	
+	
+exit_update:
 	# Clear key buffer (move failed, but key processed)
 	la $t9, key_buffer
 	sb $zero, 0($t9)
-	lw $s0, 0($sp)		# restore $s0
-	addi $sp, $sp, 4
+	
+	lw $s4, 0($sp)
+	lw $s3, 4($sp)
+	lw $s2, 8($sp)
+	lw $s1, 12($sp)
+	lw $s0, 16($sp)
+	lw $ra, 20($sp)
+	addi $sp, $sp, 24
 	jr $ra

@@ -52,6 +52,12 @@ main:
     # Infinite loop
 game_loop:
 	jal movement
+	
+	# Sleep for a short duration so the player doesn't instantly hit a wall
+    li $v0, 32
+    li $a0, 150         # 150 milliseconds delay (adjust for speed)
+    syscall
+    
 	j game_loop        # -> keeps the program running
     
 # -------------------------
@@ -134,7 +140,7 @@ update_screen:
 	sw   $s0, 0($sp)	# Save $s0 so we can use it as a loop counter safely
 
 	# clear screen by printing newlines
-	li   $s0, 20		# Using $s0 instead of $t0 because print overwrites $t0
+	li   $s0, 5		# Using $s0 instead of $t0 because print overwrites $t0
 	jal clear_nl_loop
 
 	# print score line
@@ -216,41 +222,41 @@ update_score:
 # -------------------------
 # Using player's input
 movement:
-	# read key
+	# read key from buffer
 	la   $t9, key_buffer
 	lb   $t0, 0($t9)
 
-	# if no key -> clear last_key and return
-	beqz $t0, reset_last
+	# If no new key -> skip to processing the last known key
+	beqz $t0, process_last_key
 
-	# check if same as last processed key
+ 	 # New key -> Update last_key and clear key_buffer
 	la   $t8, last_key
-	lb   $t1, 0($t8)
-	beq  $t0, $t1, ignore_repeat	# if it's the same key, ignore but consume buffer
+	sb   $t0, 0($t8)	# Store the new input into last_key
+ 	sb   $zero, 0($t9)	# Clear key_buffer so we don't read it twice
 
-	# store new key as last and consume input
-	sb   $t0, 0($t8)
-	sb   $zero, 0($t9)
+process_last_key:
+	# Load the direction we should continuously move in
+	la   $t8, last_key
+	lb   $t0, 0($t8)
+    
+	# If last_key is still 0 (game just started), do nothing
+	beqz $t0, end_move
     
 	# Movement dispatch
-	beq $t0, 119, up	# input 'w'
-	beq $t0, 115, down	# input 's'
-	beq $t0, 97, left	# input 'a'
-	beq $t0, 100, right	# input 'd'
-	j end_move
+	beq $t0, 119, up      # input 'w'
+	beq $t0, 115, down    # input 's'
+	beq $t0, 97, left     # input 'a'
+	beq $t0, 100, right   # input 'd'
     
-ignore_repeat:
-	# consume the repeating key so we can detect release later
-	sb   $zero, 0($t9)
-	j    end_move
-
+	# If an invalid key is pressed, just end the move (keeps moving previous direction if you prefer, or stops. Currently it just stops.)
+	j end_move
 up:
 	lw $t0, x_player
 	addi $t0, $t0, -1
 	sw $t0, new_row
 	lw $t1, y_player
 	sw $t1, new_col
-	j update_player
+	j call_update
     
 down:
 	lw $t0, x_player
@@ -258,7 +264,7 @@ down:
 	sw $t0, new_row
 	lw $t1, y_player
 	sw $t1, new_col
-	j update_player
+	j call_update
 
 left:
 	lw $t0, x_player
@@ -266,7 +272,7 @@ left:
 	lw $t1, y_player
 	addi $t1, $t1, -1
 	sw $t1, new_col
-	j update_player
+	j call_update
 
 right:
 	lw $t0, x_player
@@ -274,14 +280,17 @@ right:
 	lw $t1, y_player
 	addi $t1, $t1, +1
 	sw $t1, new_col
-	j update_player
+	j call_update
 
-end_move:
-	jr $ra
+call_update:
+    # We use jal here so update_player returns HERE, not to main
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    jal update_player
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
     
-reset_last:
-	la $t8, last_key
-	sb $zero, 0($t8)
+end_move:
 	jr $ra
 
 # -------------------------
@@ -396,7 +405,7 @@ find_empty_spot:
 # End the game
     
 trigger_game_over:
-	li $s0, 20
+	li $s0, 10
 	jal clear_nl_loop	# One last redraw to show final score/position
     
 	la $a0, game_over       # Load "Game Over" string

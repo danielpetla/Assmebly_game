@@ -134,7 +134,7 @@ update_screen:
 	sw   $s0, 0($sp)	# Save $s0 so we can use it as a loop counter safely
 
 	# clear screen by printing newlines
-	li   $s0, 20		# Using $s0 instead of $t0 because print overwrites $t0
+	li   $s0, 10		# Using $s0 instead of $t0 because print overwrites $t0
 	jal clear_nl_loop
 
 	# print score line
@@ -396,7 +396,7 @@ find_empty_spot:
 # End the game
     
 trigger_game_over:
-	li $s0, 20
+	li $s0, 10
 	jal clear_nl_loop	# One last redraw to show final score/position
     
 	la $a0, game_over       # Load "Game Over" string

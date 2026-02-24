@@ -9,6 +9,7 @@ map:
 
 score:		.asciiz "Score: "
 game_over:	.asciiz "Game Over\n"
+game_won:	.asciiz "Game Won\n"
 new_line:	.asciiz "\n"
 clear_screen:	.asciiz "\033[3J\033[H\033[2J"
 
@@ -133,13 +134,8 @@ update_screen:
 	sw   $s0, 0($sp)	# Save $s0 so we can use it as a loop counter safely
 
 	# clear screen by printing newlines
-	li   $s0, 40		# Using $s0 instead of $t0 because print overwrites $t0
-    
-clear_nl_loop:
-	la   $a0, new_line
-	jal  print
-	addi $s0, $s0, -1
-	bgtz $s0, clear_nl_loop
+	li   $s0, 20		# Using $s0 instead of $t0 because print overwrites $t0
+	jal clear_nl_loop
 
 	# print score line
 	jal  print_score
@@ -152,6 +148,21 @@ clear_nl_loop:
 	lw   $ra, 4($sp)
 	addi $sp, $sp, 8
 	jr   $ra
+
+# -------------------------
+# Creating a clear screen
+clear_nl_loop:
+	addi, $sp, $sp -4
+	sw $ra, 0($sp)
+	
+	la $a0, new_line
+	jal print
+	addi $s0, $s0, -1
+	bgtz $s0, clear_nl_loop
+	
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
+	jr $ra
 
 # -------------------------
 # Convert integer to ASCII string
@@ -192,10 +203,15 @@ done:
 	jr $ra
     
 # -------------------------
-# Update score
+# Update score and check for win
 update_score:
-	addi $s7, $s7, 5	# just add points, the screen will be redrawn by update_player
-	jr $ra
+	addi $s7, $s7, 5	# add points
+	
+	# Check if the player reached 15 points
+	li $t0, 100              
+	bge $s7, $t0, trigger_game_over
+    
+	jr $ra                  # If not 100, just return
 
 # -------------------------
 # Using player's input
@@ -293,12 +309,15 @@ update_player:
     
 	# Collision check
 	li $t3, '#'
-	beq $t5, $t3, exit_update
+	beq $t5, $t3, trigger_game_over
     
 	# Reward check
 	li $t3, '@'
 	bne $t5, $t3, clear_old
+	
+	# reward hit
 	jal update_score	# add points
+	jal spawn_reward	# new reward
     
 # Clear old position
 clear_old:
@@ -332,6 +351,62 @@ exit_update:
 	lw $ra, 20($sp)
 	addi $sp, $sp, 24
 	jr $ra
+
+# -------------------------
+# Spawns a new '@' in a random empty location
+spawn_reward:
+    addi $sp, $sp, -4
+    sw   $ra, 0($sp)
+
+find_empty_spot:
+	# Random Row (1 - 6)
+	li $v0, 42          
+	li $a0, 0           
+	li $a1, 6           
+	syscall             
+	addi $t0, $a0, 1	# $t0 = random row
+
+	# Random Col (1 - 10)
+	li $v0, 42
+	li $a1, 10          
+	syscall
+	addi $t1, $a0, 1	# $t1 = random col
+
+	# Map Offset
+	li $t2, 13		# Width (12 chars + \n)
+	mul $t3, $t0, $t2   
+	add $t3, $t3, $t1   
+	la  $t4, map
+	add $t4, $t4, $t3	# Address of the spot
+
+	# Check if empty space
+	lbu $t5, 0($t4)
+	li  $t6, ' '        
+	bne $t5, $t6, find_empty_spot	# If it's a wall or player, try again!
+
+	# Place the Reward
+	li  $t5, '@'
+	sb  $t5, 0($t4)
+
+	lw   $ra, 0($sp)
+	addi $sp, $sp, 4
+	jr   $ra
+		
+# -------------------------
+# End the game
+    
+trigger_game_over:
+	li $s0, 20
+	jal clear_nl_loop	# One last redraw to show final score/position
+    
+	la $a0, game_over       # Load "Game Over" string
+	jal print
+	
+	jal print_score
+    
+	# Exit syscall for MARS
+	li $v0, 10              
+	syscall
 
 # -------------------------
 # Keyboard interrupt
